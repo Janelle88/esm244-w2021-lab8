@@ -1,0 +1,203 @@
+---
+title: "lab 8"
+author: "Janelle Christensen"
+date: "3/3/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(tidyverse)
+library(here)
+library(janitor)
+library(palmerpenguins)
+
+# Packages for cluster analysis:
+library(NbClust)
+library(cluster)
+library(factoextra)
+library(dendextend)
+library(ggdendro)
+
+```
+
+# Intro to Cluster analysis (k-means, heirarchcal)
+
+## Part 1. K-means clustering:
+
+### Exploratory visualization
+
+First map species onto point color, does it look like there is an opportunity to cluster by species?
+
+```{r}
+
+# Bill lenght v. depth 
+
+ggplot(penguins) +
+  geom_point(aes(x = bill_length_mm,
+                 y = bill_depth_mm,
+                 color = species,
+                 shape = sex),
+             size = 3,
+             alpha = 0.7) +
+  scale_color_manual(values = c("orange", "cyan4", "darkmagenta"))
+
+```
+
+```{r}
+
+# fliper length v body mass
+ggplot(penguins) +
+  geom_point(aes(x = flipper_length_mm,
+                 y = body_mass_g,
+                 color = species,
+                 shape = sex),
+             size = 3,
+             alpha = 0.7) +
+  scale_color_manual(values = c("orange","cyan4","darkmagenta"))
+
+```
+```{r}
+
+number_est <- NbClust(penguins[3:6], min.nc = 2, max.nc = 10, method = "kmeans")
+
+```
+
+```{r}
+number_est
+
+```
+### Create a complete, scaled version of the data
+
+```{r}
+
+# drop rows where any of the four size measurements are missing
+
+penguins_complete <- penguins %>% 
+  drop_na(bill_length_mm, bill_depth_mm, body_mass_g, flipper_length_mm)
+
+# only keep the colums for the four size measurements then scale them
+
+penguins_scale <- penguins_complete %>% 
+  select(ends_with("mm"), body_mass_g) %>% 
+  scale()
+
+```
+
+### Run k-means
+
+```{r}
+
+penguins_km <- kmeans(penguins_scale, 3) # specify 3 groups
+
+penguins_km$size # how many observations assigned to each cluster
+
+```
+```{r}
+penguins_km$cluster # what cluster each observation in penguins_scale is assigned to
+```
+```{r}
+# bind the cluster number to the original data used for clustering, so that we can see what cluster each penguin is assigne to
+
+penguins_cl <- data.frame(penguins_complete, cluster_no = factor(penguins_km$cluster))
+
+# plot flipper length v. body mass, indicating which cluster each penguin is assigne to (but also showing the actual species):
+
+ggplot(penguins_cl) +
+  geom_point(aes(x = flipper_length_mm,
+                 y = body_mass_g,
+                 color = cluster_no,
+                 shape = species))
+```
+```{r}
+
+ggplot(penguins_cl) +
+  geom_point(aes(x = bill_length_mm,
+                 y = bill_depth_mm,
+                 color = cluster_no,
+                 shape = species))
+
+```
+
+We can see subjectively that a lot of Adelies are in cluster 2, chinstaps in culuster 1 and gentoos in cluster 3, but what are the actual counts?
+
+```{r}
+
+penguins_cl %>% 
+  count(species, cluster_no) %>% 
+  pivot_wider(names_from = cluster_no, values_from = n) %>% 
+  rename('Cluster 1' = '1', 'Cluster 2' = '2', 'Cluster 3' = '3')
+
+```
+## Part 2: Cluster analysis, hierachical
+
+### Read in the data and simplify
+
+```{r}
+
+wb_env <- read_csv("wb_env.csv")
+
+```
+```{r}
+wb_ghg_20 <- wb_env %>% 
+  arrange(-ghg) %>% 
+  head(20)
+```
+
+### scale the data
+```{r}
+# scale the nummeric variables (columns 3:7)
+
+wb_scaled <- wb_ghg_20 %>% 
+  select(3:7) %>% 
+  scale()
+
+# update to add romnames
+
+rownames(wb_scaled) <- wb_ghg_20$name
+
+```
+### Find the Euclidean distances
+```{r}
+euc_distance <- dist(wb_scaled, method = "euclidean")
+
+View(euc_distance)
+
+```
+
+### Perform hierarchical clustering by complete linkage with `stats::hclust()`
+
+```{r}
+
+hc_complete <- hclust(euc_distance, method = "complete")
+
+plot(hc_complete,  cex = 0.6, hang = -1)
+
+```
+## Now let's do it by single linkage and compare
+
+```{r}
+hc_single <- hclust(euc_distance, method = "single")
+
+plot(hc_single, cex = 0.6, hang = -1)
+```
+
+### Make a tanglegram to compare dendrograms
+```{r}
+
+dend_complete <- as.dendrogram(hc_complete)
+
+dend_simple <- as.dendrogram(hc_single)
+
+```
+
+```{r}
+tanglegram(dend_complete, dend_simple)
+```
+```{r}
+ggdendrogram(hc_complete, rotate = TRUE) +
+  theme_minimal() +
+  labs(x = "Country")
+```
+
